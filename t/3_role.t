@@ -29,9 +29,9 @@ foreach my $i ( 0 ... $#buffer ) {
 }   
 
 my $object = new Astro::VO::VOEvent( XML => $xml );
-my $version = $object->version( );
+my $role = $object->role( );
 
-is( $version, "HTN/0.1", "comparing VERSION strings" );
+is( $role, "test", "comparing ROLE strings" );
 
 
 # T I M E   A T   T H E   B A R ---------------------------------------------

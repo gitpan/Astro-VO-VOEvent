@@ -42,13 +42,13 @@ use File::Spec;
 use Carp;
 use Data::Dumper;
 
-'$Revision: 1.16 $ ' =~ /.*:\s(.*)\s\$/ && ($VERSION = $1);
+'$Revision: 1.28 $ ' =~ /.*:\s(.*)\s\$/ && ($VERSION = $1);
 
 # C O N S T R U C T O R ----------------------------------------------------
 
 =head1 REVISION
 
-$Id: VOEvent.pm,v 1.16 2006/03/21 09:43:16 voevent Exp $
+$Id: VOEvent.pm,v 1.28 2006/06/20 20:57:52 voevent Exp $
 
 =head1 METHODS
 
@@ -125,7 +125,10 @@ or
                                           Time  => $time },
                          How         => { Name     => $string,
                                           Location => $string,
-                                          RTML     => $url }, 
+                                          RTML     => $url,
+					  Reference => { URL => $url, 
+					                 Type => $string,
+							 Name => $string } }, 
                          What        => [ { Name  => $strig,
                                             UCD   => $string,
                                             Value => $string },
@@ -215,8 +218,7 @@ sub build {
   my %args = @_;
 
   # mandatory tags
-  unless ( exists $args{Role} && exists $args{ID} && 
-           ( exists $args{Reference} || $args{WhereWhen} ) ) {
+  unless ( exists $args{Role} && exists $args{ID} ) {
      return undef;
   }         
 
@@ -224,25 +226,52 @@ sub build {
   $self->{WRITER}->xmlDecl( 'UTF-8' );
    
   # BEGIN DOCUMENT ------------------------------------------------------- 
-  if ( exists $args{UseSTC} ) {
+  if ( exists $args{UseHTN} ) {
      $self->{WRITER}->startTag( 'VOEvent', 
-          #'type' => $args{Type},
-          'role' => $args{Role},
-          'id'   => $args{ID},
-	  'version' => '1.1x',
-          'xmlns:stc' => 'http://www.ivoa.net/xml/STC/stc-v1.20.xsd',
-          'xmlns:crd' => 'http://www.ivoa.net/xml/STC/STCCoords/v1.20',
-          'xmlns:xi'  => 'http://www.w3c.org/2001/XInclude',
-          'xmlns:xsi'  => 'http://www.w3c.org/2001/XMLSchema-instance',
-          'xsi:schemaLocation' => 'http://www.ivoa.net/xml/STC/stc-v1.20'
-	  );   
-  } else {
-     $self->{WRITER}->startTag( 'VOEvent', 
-          #'type' => $args{Type},
-          'role' => $args{Role},
-          'id'   => $args{ID},
-	  'version' => 'HTN/0.2' );  
-  }
+        #'type' => $args{Type},
+        'role' => $args{Role},
+        'id'   => $args{ID},
+      	'version' => 'HTN/0.2' );  
+  } elsif ( exists $args{UseQualified} ) {
+        if ( exists $args{UseID} ) {
+          $self->{WRITER}->startTag( 'VOEvent', 
+             #'type' => $args{Type},
+             'role' => $args{Role},
+                'id'   => $args{ID},
+	     'version' => '1.1',
+	     'xmlns' => 'http://www.ivoa.net/xml/VOEvent/v1.1',
+             'xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance',
+	     'xsi:schemaLocation' =>
+	        'http://www.ivoa.net/xml/VOEvent/v1.1 ' . 
+	        'http://www.ivoa.net/xml/VOEvent/VOEvent-v1.1.xsd'
+	     );
+        } else {
+          $self->{WRITER}->startTag( 'VOEvent',
+             #'type' => $args{Type},
+             'role' => $args{Role},
+             'ivorn'   => $args{ID},
+             'version' => '1.1',
+	     'xmlns' => 'http://www.ivoa.net/xml/VOEvent/v1.1',
+             'xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance',
+	     'xsi:schemaLocation' =>
+	        'http://www.ivoa.net/xml/VOEvent/v1.1 ' . 
+	        'http://www.ivoa.net/xml/VOEvent/VOEvent-v1.1.xsd'
+             ); 
+        }
+   } else {	
+         $self->{WRITER}->startTag( 'voe:VOEvent',
+             #'type' => $args{Type},
+             'role' => $args{Role},
+             'ivorn'   => $args{ID},
+             'version' => '1.1',
+	     'xmlns:voe' => 'http://www.ivoa.net/xml/VOEvent/v1.1',
+             'xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance',
+	     'xsi:schemaLocation' =>
+	        'http://www.ivoa.net/xml/VOEvent/v1.1 ' . 
+	        'http://www.ivoa.net/xml/VOEvent/VOEvent-v1.1.xsd'
+             ); 
+	   
+   }
                             
   # REFERENCE ONLY -------------------------------------------------------
                              
@@ -258,7 +287,11 @@ sub build {
                                 'type' => ${$args{Reference}}{Type} );
   
        
-     $self->{WRITER}->endTag( 'VOEvent' );
+     if( exists $args{UseHTN} || exists $args{UseQualified} ) {
+       $self->{WRITER}->endTag( 'VOEvent' );
+     } else {
+       $self->{WRITER}->endTag( 'voe:VOEvent' );
+     }
      $self->{WRITER}->end();
      
      return $self->{BUFFER}->value();
@@ -276,46 +309,108 @@ sub build {
   # WHO
   if ( exists $args{Who} ) {
      $self->{WRITER}->startTag( 'Who' );
-  
-     if ( exists ${$args{Who}}{Publisher} ) {
-       $self->{WRITER}->startTag( 'Publisher' );
-       $self->{WRITER}->characters( ${$args{Who}}{Publisher} );
-       $self->{WRITER}->endTag( 'Publisher' );
+     
+     if ( exists ${$args{Who}}{Publisher} && ${$args{Who}}{Publisher} =~ 'ivo:' ) {
+      	$self->{WRITER}->startTag( 'AuthorIVORN' );
+     	$self->{WRITER}->characters( ${$args{Who}}{Publisher} );
+     	$self->{WRITER}->endTag( 'AuthorIVORN' );
      }
-     if ( exists ${$args{Who}}{Contact} ) {
-       $self->{WRITER}->startTag( 'Contact' );
-       if ( exists ${${$args{Who}}{Contact}}{Name} ) {
-          $self->{WRITER}->startTag( 'Name' );
-          $self->{WRITER}->characters( 
-                             ${${$args{Who}}{Contact}}{Name} );
-          $self->{WRITER}->endTag( 'Name' );          
-       }           
+     
+     my $author_flag = 0;
+     if ( exists ${$args{Who}}{Publisher} && 
+            ( ! (${$args{Who}}{Publisher} =~ 'ivo:') || exists ${$args{Who}}{Contact} ) )  {
+        $self->{WRITER}->startTag( 'Author' );
+	$author_flag = 1;
+     }	  
+     
+     # Backward compatible interface to older API, translate as much as possible the
+     # RTML based <Who> format into the new IVOA RM format used in v1.1
+     if ( exists ${$args{Who}}{Publisher} && 
+          ! ${$args{Who}}{Publisher} =~ 'ivo:' ) {
+        $self->{WRITER}->startTag( 'title' );
+        $self->{WRITER}->characters( ${$args{Who}}{Publisher} );
+        $self->{WRITER}->endTag( 'title' );
+     }
+     if ( exists ${$args{Who}}{Contact} ) {         
        if ( exists ${${$args{Who}}{Contact}}{Institution} ) {
-          $self->{WRITER}->startTag( 'Institution' );
-          $self->{WRITER}->characters( 
-                             ${${$args{Who}}{Contact}}{Institution} );
-          $self->{WRITER}->endTag( 'Institution' );          
-       }
+             $self->{WRITER}->startTag( 'shortName' );
+	     $self->{WRITER}->characters( ${${$args{Who}}{Contact}}{Institution} ); 
+             $self->{WRITER}->endTag( 'shortName' );
+       } 
        if ( exists ${${$args{Who}}{Contact}}{Address} ) {
-          $self->{WRITER}->startTag( 'Address' );
-          $self->{WRITER}->characters( 
-                             ${${$args{Who}}{Contact}}{Address} );
-          $self->{WRITER}->endTag( 'Address' );          
+	     $self->{WRITER}->startTag( 'contributor' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Contact}}{Address}  );
+             $self->{WRITER}->endTag( 'contributor' );                
        }   
+       if ( exists ${${$args{Who}}{Contact}}{Name} ) {
+             $self->{WRITER}->startTag( 'contactName' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Contact}}{Name} );
+             $self->{WRITER}->endTag( 'contactName' );
+       }  
        if ( exists ${${$args{Who}}{Contact}}{Telephone} ) {
-          $self->{WRITER}->startTag( 'Telephone' );
-          $self->{WRITER}->characters( 
-                             ${${$args{Who}}{Contact}}{Telephone} );
-          $self->{WRITER}->endTag( 'Telephone' );          
+             $self->{WRITER}->startTag( 'contactPhone' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Contact}}{Telephone} );
+             $self->{WRITER}->endTag( 'contactPhone' );          
        }   
        if ( exists ${${$args{Who}}{Contact}}{Email} ) {
-          $self->{WRITER}->startTag( 'Email' );
-          $self->{WRITER}->characters( 
-                             ${${$args{Who}}{Contact}}{Email} );
-          $self->{WRITER}->endTag( 'Email' );          
+             $self->{WRITER}->startTag( 'contactEmail' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Contact}}{Email} );
+             $self->{WRITER}->endTag( 'contactEmail' );         
        }    
-       $self->{WRITER}->endTag( 'Contact' );
+   
      }
+       
+     if ( $author_flag == 1 ) {
+        $self->{WRITER}->endTag( 'Author' );
+     }    
+          
+     # The new 1.1 format
+     if ( exists ${$args{Who}}{AuthorIVORN} ) {
+          $self->{WRITER}->startTag( 'AuthorIVORN' );
+          $self->{WRITER}->characters( ${$args{Who}}{AuthorIVORN} );
+          $self->{WRITER}->endTag( 'AuthorIVORN' );     
+     }
+     if ( exists ${$args{Who}}{Author} ) {
+       $self->{WRITER}->startTag( 'Author' );
+          if( exists ${${$args{Who}}{Author}}{Title} ) { 
+             $self->{WRITER}->startTag( 'title' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Author}}{Title} );
+             $self->{WRITER}->endTag( 'title' );
+          }
+          if( exists ${${$args{Who}}{Author}}{ShortName} ) { 
+             $self->{WRITER}->startTag( 'shortName' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Author}}{ShortName} );
+             $self->{WRITER}->endTag( 'shortName' );
+          }
+          if( exists ${${$args{Who}}{Author}}{Contributor} ) { 
+             $self->{WRITER}->startTag( 'contributor' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Author}}{Contributor} );
+             $self->{WRITER}->endTag( 'contributor' );
+          }
+          if( exists ${${$args{Who}}{Author}}{LogoURL} ) { 
+             $self->{WRITER}->startTag( 'logoURL' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Author}}{LogoURL} );
+             $self->{WRITER}->endTag( 'logoURL' );
+          }
+          if( exists ${${$args{Who}}{Author}}{ContactName} ) { 
+             $self->{WRITER}->startTag( 'contactName' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Author}}{ContactName} );
+             $self->{WRITER}->endTag( 'contactName' );
+          }
+          if( exists ${${$args{Who}}{Author}}{ContactEmail}  ) { 
+             $self->{WRITER}->startTag( 'contactEmail' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Author}}{ContactEmail} );
+             $self->{WRITER}->endTag( 'contactEmail' );
+          }
+          if( exists ${${$args{Who}}{Author}}{ContactPhone} ) { 
+             $self->{WRITER}->startTag( 'contactPhone' );
+             $self->{WRITER}->characters( ${${$args{Who}}{Author}}{ContactPhone} );
+             $self->{WRITER}->endTag( 'contactPhone' );
+          }	  
+       $self->{WRITER}->endTag( 'Author' );
+     }
+     
+     # The <date> tag didn't change between 1.0 and 1.1     
      if ( exists ${$args{Who}}{Date} ) {
        $self->{WRITER}->startTag( 'Date' );
        $self->{WRITER}->characters( ${$args{Who}}{Date} );
@@ -331,45 +426,94 @@ sub build {
      
      my @array = @{$args{Citations}};
      foreach my $i ( 0 ... $#array ) {
-        $self->{WRITER}->startTag( 'EventID','cite' => ${$array[$i]}{Cite} );
-	$self->{WRITER}->characters( ${$array[$i]}{ID} );
-	$self->{WRITER}->endTag( 'EventID' );
+        if ( exists $args{UseID} ) {
+           $self->{WRITER}->startTag( 'EventID','cite' => ${$array[$i]}{Cite} );
+	   $self->{WRITER}->characters( ${$array[$i]}{ID} );
+	   $self->{WRITER}->endTag( 'EventID' );
+        } else {
+           $self->{WRITER}->startTag( 'EventIVORN','cite' => ${$array[$i]}{Cite} );
+	   $self->{WRITER}->characters( ${$array[$i]}{ID} );
+	   $self->{WRITER}->endTag( 'EventIVORN' );	
+	}
      }
      $self->{WRITER}->endTag( 'Citations' );
   }
    
   # WHERE & WHEN  
-  if ( exists $args{UseSTC} ) {
+  if ( exists $args{WhereWhen} ) {
+    unless ( exists $args{UseHTN} ) {
+ 
       $self->{WRITER}->startTag( 'WhereWhen' );
-      $self->{WRITER}->startTag( 'stc:ObservationLocation' );
-      $self->{WRITER}->startTag( 'crd:AstroCoords',
-        		      'coord_system_id' => 'FK5-UTC' );
-      $self->{WRITER}->startTag( 'crd:Time', 'unit' => 's' );
-      $self->{WRITER}->startTag( 'crd:TimeInstant' );
-      $self->{WRITER}->startTag( 'crd:TimeScale' );
-      $self->{WRITER}->characters( 'UTC' );
-      $self->{WRITER}->endTag( 'crd:TimeScale' );
-      $self->{WRITER}->startTag( 'crd:ISOTime' );
+      $self->{WRITER}->startTag( 'ObsDataLocation', 
+        'xmlns' => 'http://www.ivoa.net/xml/STC/stc-v1.30.xsd',  
+        'xmlns:xlink' => 'http://www.w3.org/1999/xlink' );
+      $self->{WRITER}->emptyTag( 'ObservatoryLocation',
+        'id' => "GEOLUN",
+	'xlink:type' => 'simple', 
+        'xlink:href' => 'ivo://STClib/Observatories#GEOLUN' );
+      $self->{WRITER}->startTag( 'ObservationLocation' );
+      $self->{WRITER}->emptyTag( 'AstroCoordSystem',
+        'id' => 'UTC-FK5-GEO',
+	'xlink:type' => 'simple',  
+	'xlink:href' => 'ivo://STClib/CoordSys#UTC-FK5-GEO/' );
+      $self->{WRITER}->startTag( 'AstroCoords',
+        'coord_system_id' => 'UTC-FK5-GEO' );
+      $self->{WRITER}->startTag( 'Time', 'unit' => 's' );
+      $self->{WRITER}->startTag( 'TimeInstant' );
+      $self->{WRITER}->startTag( 'ISOTime' );
       $self->{WRITER}->characters( ${$args{WhereWhen}}{Time} );
-      $self->{WRITER}->endTag( 'crd:ISOTime' );
-      $self->{WRITER}->endTag( 'crd:TimeInstant' );
-      $self->{WRITER}->endTag( 'crd:Time' );
-      $self->{WRITER}->startTag( 'crd:Position2D', 'unit' => 'deg' );
-      $self->{WRITER}->startTag( 'crd:Value2');
-      my $position = ${$args{WhereWhen}}{RA} . " " . ${$args{WhereWhen}}{Dec};
-      $self->{WRITER}->characters( $position );
-      $self->{WRITER}->endTag( 'crd:Value2' );
+      $self->{WRITER}->endTag( 'ISOTime' );
+      $self->{WRITER}->endTag( 'TimeInstant' );
+      $self->{WRITER}->endTag( 'Time' );						
+      $self->{WRITER}->startTag( 'Position2D', 'unit' => 'deg' );
+      $self->{WRITER}->startTag( 'Value2' );
+      $self->{WRITER}->startTag( 'C1' );							
+      $self->{WRITER}->characters( ${$args{WhereWhen}}{RA} );
+      $self->{WRITER}->endTag( 'C1' );
+      $self->{WRITER}->startTag( 'C2' );							
+      $self->{WRITER}->characters( ${$args{WhereWhen}}{Dec} );
+      $self->{WRITER}->endTag( 'C2' );
+      $self->{WRITER}->endTag( 'Value2' );
       if ( exists ${$args{WhereWhen}}{Error} ) {
-        $self->{WRITER}->startTag( 'crd:Error1Circle' );
-        $self->{WRITER}->startTag( 'crd:Size' );
+        $self->{WRITER}->startTag( 'Error2Radius' );
         $self->{WRITER}->characters( ${$args{WhereWhen}}{Error} );
-        $self->{WRITER}->endTag( 'crd:Size' );
-        $self->{WRITER}->endTag( 'crd:Error1Circle' );
+        $self->{WRITER}->endTag( 'Error2Radius' );
       }  
-      $self->{WRITER}->endTag( 'crd:Position2D' );
-      $self->{WRITER}->endTag( 'crd:AstroCoords' );
-      $self->{WRITER}->endTag( 'stc:ObservationLocation' );
-  } else {
+      $self->{WRITER}->endTag( 'Position2D' );
+      $self->{WRITER}->endTag( 'AstroCoords' );
+      $self->{WRITER}->endTag( 'ObservationLocation' );
+      $self->{WRITER}->endTag( 'ObsDataLocation' );
+  
+      #$self->{WRITER}->startTag( 'WhereWhen' );
+      #$self->{WRITER}->startTag( 'stc:ObservationLocation' );
+      #$self->{WRITER}->startTag( 'crd:AstroCoords',
+      #  		      'coord_system_id' => 'FK5-UTC' );
+      #$self->{WRITER}->startTag( 'crd:Time', 'unit' => 's' );
+      #$self->{WRITER}->startTag( 'crd:TimeInstant' );
+      #$self->{WRITER}->startTag( 'crd:TimeScale' );
+      #$self->{WRITER}->characters( 'UTC' );
+      #$self->{WRITER}->endTag( 'crd:TimeScale' );
+      #$self->{WRITER}->startTag( 'crd:ISOTime' );
+      #$self->{WRITER}->characters( ${$args{WhereWhen}}{Time} );
+      #$self->{WRITER}->endTag( 'crd:ISOTime' );
+      #$self->{WRITER}->endTag( 'crd:TimeInstant' );
+      #$self->{WRITER}->endTag( 'crd:Time' );
+      #$self->{WRITER}->startTag( 'crd:Position2D', 'unit' => 'deg' );
+      #$self->{WRITER}->startTag( 'crd:Value2');
+      #my $position = ${$args{WhereWhen}}{RA} . " " . ${$args{WhereWhen}}{Dec};
+      #$self->{WRITER}->characters( $position );
+      #$self->{WRITER}->endTag( 'crd:Value2' );
+      #if ( exists ${$args{WhereWhen}}{Error} ) {
+      #  $self->{WRITER}->startTag( 'crd:Error1Circle' );
+      #  $self->{WRITER}->startTag( 'crd:Size' );
+      #  $self->{WRITER}->characters( ${$args{WhereWhen}}{Error} );
+      #  $self->{WRITER}->endTag( 'crd:Size' );
+      #  $self->{WRITER}->endTag( 'crd:Error1Circle' );
+      #}  
+      #$self->{WRITER}->endTag( 'crd:Position2D' );
+      #$self->{WRITER}->endTag( 'crd:AstroCoords' );
+      #$self->{WRITER}->endTag( 'stc:ObservationLocation' );
+    } else {
       $self->{WRITER}->startTag( 'WhereWhen', 
                                  'type' => 'simple', );
       $self->{WRITER}->startTag( 'RA', units => 'deg' );
@@ -407,32 +551,38 @@ sub build {
       }		    
       $self->{WRITER}->endTag( 'Time' );  
        
-  } 
-  $self->{WRITER}->endTag( 'WhereWhen' );
+    } 
+    $self->{WRITER}->endTag( 'WhereWhen' );
+  }
    
   # HOW
   if ( exists $args{How} ) {
      $self->{WRITER}->startTag( 'How' );
-     $self->{WRITER}->startTag( 'Instrument' );
     
-     if ( exists ${$args{How}}{Name} ) {
-       $self->{WRITER}->startTag( 'Name' );
-       $self->{WRITER}->characters( ${$args{How}}{Name} );
-       $self->{WRITER}->endTag( 'Name' );
-     }           
+     #if ( exists ${$args{How}}{Name} ) {
+     #  $self->{WRITER}->startTag( 'Name' );
+     #  $self->{WRITER}->characters( ${$args{How}}{Name} );
+     #  $self->{WRITER}->endTag( 'Name' );
+     #}           
     
-     if ( exists ${$args{How}}{Location} ) {
-       $self->{WRITER}->startTag( 'Location' );
-       $self->{WRITER}->characters( ${$args{How}}{Location} );
-       $self->{WRITER}->endTag( 'Location' );
-     }     
+     #if ( exists ${$args{How}}{Location} ) {
+     #  $self->{WRITER}->startTag( 'Location' );
+     #  $self->{WRITER}->characters( ${$args{How}}{Location} );
+     #  $self->{WRITER}->endTag( 'Location' );
+     #}     
      if ( exists ${$args{How}}{RTML} ) {
        $self->{WRITER}->emptyTag( 'Reference' , 
                                    uri => ${$args{How}}{RTML}, 
-                                   type => 'rtml' );
-     }         
-        
-     $self->{WRITER}->endTag( 'Instrument' );
+                                   type => 'rtml',
+				   name => 'Phase 0' );
+     }
+     if ( exists ${$args{How}}{Reference} ) {
+       $self->{WRITER}->emptyTag( 'Reference' , 
+                                   uri => ${${$args{How}}{Reference}}{URL}, 
+                                   type => ${${$args{How}}{Reference}}{Type},
+				   name => ${${$args{How}}{Reference}}{Name} );
+     }
+             
      $self->{WRITER}->endTag( 'How' );
   }
 
@@ -545,7 +695,11 @@ sub build {
   }  
   
   # END DOCUMENT --------------------------------------------------------- 
-  $self->{WRITER}->endTag( 'VOEvent' );
+  if( exists $args{UseHTN} || exists $args{UseQualified} ) {
+    $self->{WRITER}->endTag( 'VOEvent' );
+  } else {
+    $self->{WRITER}->endTag( 'voe:VOEvent' );
+  }
   $self->{WRITER}->end();
   
   my $xml = $self->{BUFFER}->value();
@@ -566,7 +720,14 @@ Return the id of the VOEvent document
 
 sub id {
   my $self = shift;
-  return $self->{DOCUMENT}->{id};
+
+  my $id;
+  if ( defined $self->{DOCUMENT}->{ivorn} ) {
+    $id = $self->{DOCUMENT}->{ivorn};
+  } else {
+    $id = $self->{DOCUMENT}->{id};
+  }
+  return $id;
 }
 
 =item B<role>
@@ -638,13 +799,52 @@ sub ra {
                    "units" => $self->{DOCUMENT}->{WhereWhen}->{RA}->{Error}{units}};
   } else {
   
-    my $string = $self->{DOCUMENT}->{WhereWhen}->{ObservationLocation}->
+    #print Dumper( $self->{DOCUMENT}->{WhereWhen} );
+  
+    # Try old style eSTAR default
+    my $string = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObservationLocation"}->
                         {"crd:AstroCoords"}->{"crd:Position2D"}->{"crd:Value2"};
-    my ($ra, $dec) = split " ", $string;
+    my ($ra, $dec) = split " ", $string if defined $string;
     
     $ra{value} = $ra;
-    $ra{units} =  $self->{DOCUMENT}->{WhereWhen}->{ObservationLocation}->
+    $ra{units} =  $self->{DOCUMENT}->{WhereWhen}->{"stc:ObservationLocation"}->
                         {"crd:AstroCoords"}->{"crd:Position2D"}->{unit};
+
+    # Try RAPTOR default
+    unless ( defined $ra{value} ) {
+      $ra{value} = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObsDataLocation"}
+       ->{"stc:ObservationLocation"}->{"stc:AstroCoords"}->{"stc:Position2D"}
+       ->{"stc:Value2"}->{"stc:C1"};
+       
+      $ra{units} = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObsDataLocation"}
+       ->{"stc:ObservationLocation"}->{"stc:AstroCoords"}->{"stc:Position2D"}
+       ->{unit};       
+    }   
+    
+    # Try new style v1.1 default
+    unless ( defined $ra{value} ) {
+      $ra{value} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservationLocation'}->{'AstroCoords'}->{'Position2D'}
+	->{'Value2'}->{'C1'}; 
+
+      $ra{units} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservationLocation'}->{'AstroCoords'}->{'Position2D'}
+	->{unit};     
+    }
+
+    # Try new style v1.1 default with the <ObservatoryLocation> 
+    # and the <AstroCoordsSystem> tags added into the path.
+    unless ( defined $ra{value} ) {
+      $ra{value} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservatoryLocation'}->{'ObservationLocation'}
+	->{'AstroCoordSystem'}->{'AstroCoords'}
+	->{'Position2D'}->{'Value2'}->{'C1'}; 
+
+      $ra{units} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservatoryLocation'}->{'ObservationLocation'}
+	->{'AstroCoordSystem'}->{'AstroCoords'}
+	->{'Position2D'}->{unit};     
+    }
 
   }  
   
@@ -675,13 +875,53 @@ sub dec {
                    "units"=>$self->{DOCUMENT}->{WhereWhen}->{Dec}->{Error}{units}};
   } else {
   
-    my $string = $self->{DOCUMENT}->{WhereWhen}->{ObservationLocation}->
+    # Try old style eSTAR default
+    my $string = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObservationLocation"}->
                         {"crd:AstroCoords"}->{"crd:Position2D"}->{"crd:Value2"};
-    my ($ra, $dec) = split " ", $string;
+    my ($ra, $dec) = split " ", $string if defined $string;
     
     $dec{value} = $dec;
-    $dec{units} = $self->{DOCUMENT}->{WhereWhen}->{ObservationLocation}->
+    $dec{units} = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObservationLocation"}->
                         {"crd:AstroCoords"}->{"crd:Position2D"}->{unit};
+
+
+    # Try RAPTOR default
+    unless ( defined $dec{value} ) {
+      $dec{value} = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObsDataLocation"}
+       ->{"stc:ObservationLocation"}->{"stc:AstroCoords"}->{"stc:Position2D"}
+       ->{"stc:Value2"}->{"stc:C2"};
+       
+      $dec{units} = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObsDataLocation"}
+       ->{"stc:ObservationLocation"}->{"stc:AstroCoords"}->{"stc:Position2D"}
+       ->{unit};
+       
+    } 
+    
+    # Try new style v1.1 default
+    unless ( defined $dec{value} ) {
+      $dec{value} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservationLocation'}->{'AstroCoords'}->{'Position2D'}
+	->{'Value2'}->{'C2'}; 
+
+      $dec{units} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservationLocation'}->{'AstroCoords'}->{'Position2D'}
+	->{unit};     
+    }
+
+
+    # Try new style v1.1 default with the <ObservatoryLocation> 
+    # and the <AstroCoordsSystem> tags added into the path.
+    unless ( defined $dec{value} ) {
+      $dec{value} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservatoryLocation'}->{'ObservationLocation'}
+	->{'AstroCoordSystem'}->{'AstroCoords'}
+	->{'Position2D'}->{'Value2'}->{'C2'}; 
+
+      $dec{units} = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservatoryLocation'}->{'ObservationLocation'}
+	->{'AstroCoordSystem'}->{'AstroCoords'}
+	->{'Position2D'}->{unit};     
+    }
 
   }  
   
@@ -705,8 +945,32 @@ sub epoch {
        return $self->{DOCUMENT}->{WhereWhen}->{Epoch}->{value};
   } else {
  
-    my $string = $self->{DOCUMENT}->{WhereWhen}->{ObservationLocation}->
+    # old style eSTAR default
+    my $string = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObservationLocation"}->
                         {"crd:AstroCoords"}->{"coord_system_id"};
+	
+    # RAPTOR default
+    unless (defined $string ) {
+       $string =  $self->{DOCUMENT}->{WhereWhen}->{"stc:ObsDataLocation"}
+                   ->{"stc:ObservationLocation"}->{"stc:AstroCoords"}
+		   ->{"coord_system_id"};
+    }
+    
+    # new style v1.1 default
+    unless ( defined $string ) {
+      $string = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservationLocation'}->{'AstroCoords'}->{"coord_system_id"};
+    }
+
+    # Try new style v1.1 default with <ObservatoryLocation> and
+    # <AstroCoordSystem> tags
+    unless ( defined $string ) {
+      $string = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservatoryLocation'}->{'ObservationLocation'}
+	->{'AstroCoordSystem'}->{'AstroCoords'}
+	->{"coord_system_id"};
+    }
+        		   			
     if( $string =~ "FK5" ) {
        return "J2000.0";
     } else {
@@ -733,8 +997,32 @@ sub equinox {
        return $self->{DOCUMENT}->{WhereWhen}->{Equinox}->{value};
   } else {
  
-    my $string = $self->{DOCUMENT}->{WhereWhen}->{ObservationLocation}->
+    # eSTAR default
+    my $string = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObservationLocation"}->
                         {"crd:AstroCoords"}->{"coord_system_id"};
+			
+    # RAPTOR default
+    unless (defined $string ) {
+       $string =  $self->{DOCUMENT}->{WhereWhen}->{"stc:ObsDataLocation"}
+                   ->{"stc:ObservationLocation"}->{"stc:AstroCoords"}
+		   ->{"coord_system_id"};
+    }
+    
+    # new style v1.1 default
+    unless ( defined $string ) {
+      $string = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservationLocation'}->{'AstroCoords'}->{"coord_system_id"};
+    }
+
+    # Try new style v1.1 default with <ObservatoryLocation> and
+    # the <AstroCoordSystem> tags
+    unless ( defined $string ) {
+      $string = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservatoryLocation'}->{'ObservationLocation'}
+	->{'AstroCoordSystem'}->{'AstroCoords'}
+	->{"coord_system_id"};
+    }
+            			
     if( $string =~ "FK5" ) {
        return "2000.0";
     } else {
@@ -763,9 +1051,35 @@ sub time {
     
   } else { 
   
-    $time = $self->{DOCUMENT}->{WhereWhen}->{ObservationLocation}->
+    # old style eSTAR default
+    $time = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObservationLocation"}->
       {"crd:AstroCoords"}->{"crd:Time"}->{"crd:TimeInstant"}->{"crd:ISOTime"};
+    
+    # RAPTOR default  
+    unless ( defined $time ) {
+        
+       $time = $self->{DOCUMENT}->{WhereWhen}->{"stc:ObsDataLocation"}
+                    ->{"stc:ObservationLocation"}->{"stc:AstroCoords"}
+		    ->{"stc:Time"}->{"stc:TimeInstant"}->{"stc:ISOTime"};
+	      
+    }		        
+    
+    # new style v1.1 default
+    unless ( defined $time ) {
+      $time = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservationLocation'}->{'AstroCoords'}->{"Time"}
+	->{"TimeInstant"}->{"ISOTime"};
+    }
+    
 
+    # Try new style v1.1 default with <ObservatoryLocation> and
+    # the <AstroCoordSystem> tags
+    unless ( defined $time ) {
+      $time = $self->{DOCUMENT}->{WhereWhen}->{'ObsDataLocation'}
+        ->{'ObservatoryLocation'}->{'ObservationLocation'}
+	->{'AstroCoordSystem'}->{'AstroCoords'}
+	->{"Time"}->{"TimeInstant"}->{"ISOTime"};
+    }    
   }  
   
   # There isn't a (valid?) <WhereWhen> see if there is a timestamp in
@@ -789,8 +1103,11 @@ Return the <Param> and <Group>'s of <Param>s in the <What> tag,
 
 sub what {
   my $self = shift;
-  
-  return %{$self->{DOCUMENT}->{What}};
+  if ( defined $self->{DOCUMENT}->{What} ) { 
+     return %{$self->{DOCUMENT}->{What}};
+  } else {
+     return undef;
+  }
 }
 
 # C O N F I G U R E ---------------------------------------------------------
